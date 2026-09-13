@@ -5,6 +5,9 @@ __pycache__/
 venv/
 .streamlit/secrets.toml
 *.pkl
+# MovieLens ratings may not be redistributed; only derived artifacts/cf.npz is committed
+ml-*/
+ml-*.zip
 # Superseded by app.py at the repo root; the .pkl files were Git LFS pointers
 movies-recommender-system/
 .gitattributes

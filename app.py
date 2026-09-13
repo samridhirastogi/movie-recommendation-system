@@ -5,7 +5,7 @@ import os
 import requests
 import streamlit as st
 
-from recommender import Recommender
+from recommender import DEFAULT_CF_WEIGHT, Recommender
 
 st.set_page_config(page_title="CineMatch · Movie Recommender", page_icon="🎬", layout="wide")
 
@@ -81,14 +81,15 @@ def card(movie, rec: Recommender, seed_ids: list[int] | None, api_key: str | Non
     image = f'<img class="poster" src="{html.escape(url)}" alt="">' if url else banner(movie, year)
     runtime = f"{int(movie['runtime'])} min" if movie["runtime"] == movie["runtime"] and movie["runtime"] else ""
     meta = " · ".join(x for x in [year, runtime, ", ".join(movie["directors"][:1])] if x)
-    # Cosine similarities sit around 0.1-0.6 for good matches; sqrt spreads them over a readable range.
-    badge = f'<span class="match">{movie["similarity"] ** 0.5 * 100:.0f}% match</span>' if "similarity" in movie else ""
+    badge = f'<span class="match">{movie["match"] * 100:.0f}% match</span>' if "match" in movie else ""
     pills = "".join(f'<span class="pill">{html.escape(g)}</span>' for g in movie["genres"][:3])
 
     why = ""
     if seed_ids:
         shared = rec.explain(seed_ids, movie)
         parts = []
+        if shared["fans"]:
+            parts.append(f"Fans of <b>{html.escape(', '.join(shared['fans'][:2]))}</b> also liked this")
         if shared["directors"]:
             parts.append(f"Same director <b>{html.escape(', '.join(shared['directors']))}</b>")
         if shared["cast"]:
@@ -136,7 +137,8 @@ labels = {
 }
 
 st.markdown('<div class="hero"><h1>🎬 CineMatch</h1>'
-            "<p>Pick movies you love and get recommendations based on story, themes, cast and crew.</p></div>",
+            "<p>Pick movies you love and get recommendations based on story, cast and crew, "
+            "and on what fans with similar taste enjoyed.</p></div>",
             unsafe_allow_html=True)
 
 with st.sidebar:
@@ -149,6 +151,11 @@ with st.sidebar:
     hide_obscure = st.toggle("Hide films with fewer than 50 votes", value=True)
     st.header("Ranking")
     count = st.select_slider("Number of recommendations", [5, 10, 15, 20], value=10)
+    cf_weight = 0.0
+    if rec.has_cf:
+        cf_weight = st.slider("Story & cast  ↔  What fans liked", 0.0, 1.0, DEFAULT_CF_WEIGHT, 0.05,
+                              help="0 = match on plot, themes, cast and crew only; "
+                                   "1 = only what MovieLens users who liked your picks also liked.")
     quality_weight = st.slider("Favour highly-rated films", 0.0, 1.0, 0.25, 0.05,
                                help="0 = pure similarity; higher values boost films with a strong weighted rating.")
     if not api_key:
@@ -172,7 +179,9 @@ filters = dict(genres=genres or None, year_range=year_range, min_rating=min_rati
                min_votes=50 if hide_obscure else 0)
 
 if seed_ids:
-    results = rec.recommend(seed_ids, k=count, quality_weight=quality_weight, **filters)
+    results = rec.recommend(seed_ids, k=count, quality_weight=quality_weight, cf_weight=cf_weight, **filters)
+    # Badge follows the ranking blend; sqrt spreads content cosines (~0.1-0.6) over a readable range.
+    results["match"] = (1 - cf_weight) * results["similarity"] ** 0.5 + cf_weight * results["fan_score"]
     picked = " + ".join(movies.loc[movies["id"].isin(seed_ids), "title"])
     st.subheader(f"Because you like {picked}")
     if results.empty:
@@ -188,4 +197,5 @@ else:
         top = top[top["genres"].apply(lambda g: bool(set(genres) & set(g)))]
     grid(top.nlargest(count, "weighted_rating"), rec, None, api_key)
 
-st.caption("Data: TMDB 5000 Movie Dataset. This product uses the TMDB API but is not endorsed or certified by TMDB.")
+st.caption("Data: TMDB 5000 Movie Dataset and MovieLens 25M (GroupLens Research). "
+           "This product uses the TMDB API but is not endorsed or certified by TMDB.")
