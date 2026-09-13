@@ -1,0 +1,10 @@
+__pycache__/
+.ipynb_checkpoints/
+.idea/
+.venv/
+venv/
+.streamlit/secrets.toml
+*.pkl
+# Superseded by app.py at the repo root; the .pkl files were Git LFS pointers
+movies-recommender-system/
+.gitattributes
